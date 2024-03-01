@@ -21,6 +21,7 @@ import contextlib
 import dataclasses
 import queue
 import time
+import os
 from typing import Any, Mapping, Sequence
 
 from absl import flags
@@ -45,6 +46,7 @@ from praxis import pax_fiddle
 from praxis import py_utils
 from praxis import pytypes
 from praxis import trees
+from paxml.cuda_profile_hook import cudaProfilerStart,cudaProfilerStop,cudaDeviceSynchronize
 
 # Those modules are slow to import, so we do it lazily.
 metric_utils = lazy_loader.LazyLoader(
@@ -329,6 +331,10 @@ class BaseTrainProgram(Program):
     if step == self._initial_step and train_p.enforce_input_specs:
       self._partitioner.check_input_spec(model_inputs)
 
+    nsys_start_step = int(os.getenv('NSYS_START_STEP', "-1")) 
+    if (nsys_start_step == step):
+        cudaProfilerStart()
+
     model_inputs = self._partitioner.preprocess_inputs(
         self._train_input,
         model_inputs,  ## First two args can be consolidated
@@ -372,6 +378,10 @@ class BaseTrainProgram(Program):
     self._pending_train_losses.add_computation(train_outputs.loss)
     if step == self._initial_step:
       self._first_step_completion_time = time.time()
+
+    nsys_stop_step = int(os.getenv('NSYS_STOP_STEP', "-1")) 
+    if (nsys_stop_step == step):
+        cudaProfilerStop()
 
     if do_profile and step - self._initial_step < profiler_capture_step:
       self._profiler.update_step_moving_mean(train_period.elapsed)
